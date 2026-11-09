@@ -1,0 +1,172 @@
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Activity, BriefcaseBusiness, CalendarDays, ClipboardList, HeartPulse, KeyRound, LayoutDashboard, LogOut, Menu, Plus, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { api, setToken, type Appointment, type Patient, type Staff, type User, type Vital } from './api';
+
+type Dashboard = { stats: { patients: number; appointments: number; todayAppointments: number }; upcoming: Appointment[] };
+type View = 'Overview' | 'Patients' | 'Appointments' | 'Vitals' | 'Team';
+
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [view, setView] = useState<View>('Overview');
+  const [loading, setLoading] = useState(true);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [systemOnline, setSystemOnline] = useState<boolean | null>(null);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+
+  useEffect(() => {
+    if (!sessionStorage.getItem('hospital-token')) { setLoading(false); return; }
+    api<{ user: User }>('/auth/me').then((data) => setUser(data.user)).catch(() => setToken(null)).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => {
+    const navigate = (event: Event) => setView((event as CustomEvent<View>).detail);
+    window.addEventListener('navigate', navigate);
+    return () => window.removeEventListener('navigate', navigate);
+  }, []);
+  useEffect(() => {
+    let active = true;
+    const check = () => api<{ status: string }>('/health').then(() => { if (active) setSystemOnline(true); }).catch(() => { if (active) setSystemOnline(false); });
+    check();
+    const timer = window.setInterval(check, 30_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
+  const logout = () => { setToken(null); setUser(null); setView('Overview'); };
+  if (loading) return <div className="screen-center"><span className="spinner" />Loading your workspace…</div>;
+  if (!user) return <Login onLogin={setUser} />;
+
+  const navItems: View[] = ['Overview', 'Patients', 'Appointments', ...(user.role === 'receptionist' ? [] : ['Vitals']), ...(user.role === 'admin' ? ['Team'] : [])] as View[];
+  const nav = <>
+    <div className="brand"><div className="brand-mark"><Activity size={21} /></div><span>careflow</span></div>
+    <div className="nav-label">WORKSPACE</div>
+    {navItems.map((item) => {
+      const Icon = item === 'Overview' ? LayoutDashboard : item === 'Patients' ? Users : item === 'Vitals' ? HeartPulse : item === 'Team' ? BriefcaseBusiness : CalendarDays;
+      return <button key={item} className={`nav-link ${view === item ? 'active' : ''}`} onClick={() => { setView(item); setMobileOpen(false); }}><Icon size={18} />{item}</button>;
+    })}
+    <div className="sidebar-bottom">
+      <div className="secure-badge"><ShieldCheck size={17} /><span>Secure workspace</span></div>
+      <div className="profile">
+        <div className="avatar">{user.name.charAt(0).toUpperCase()}</div>
+        <div className="profile-copy"><strong>{user.name}</strong><span>{user.role}</span></div>
+        <button className="profile-action" aria-label="Change password" onClick={() => setShowPasswordForm(true)}><KeyRound size={16} /></button>
+        <button className="profile-action" aria-label="Sign out" onClick={logout}><LogOut size={16} /></button>
+      </div>
+    </div>
+  </>;
+
+  return <div className="app-shell">
+    <aside className="sidebar">{nav}</aside>
+    {mobileOpen && <div className="mobile-backdrop" onClick={() => setMobileOpen(false)}><div className="mobile-sidebar" onClick={(e) => e.stopPropagation()}>{nav}</div></div>}
+    <main className="main-area">
+      <header className="topbar"><button className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><div className="breadcrumbs">Hospital <span>/</span> {view}</div><div className="topbar-user"><span className={`live-dot ${systemOnline === false ? 'offline' : ''}`} />{systemOnline === null ? 'Checking system' : systemOnline ? 'System online' : 'System unavailable'}<div className="top-avatar">{user.name.charAt(0).toUpperCase()}</div></div></header>
+      <section className="content">
+        <div className="page-heading"><div><div className="eyebrow">{new Intl.DateTimeFormat(undefined, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }).format(new Date()).toUpperCase()}</div><h1>{view === 'Overview' ? `Good morning, ${user.name.split(' ')[0]}` : view}</h1><p>{view === 'Overview' ? 'Here’s what is happening across your hospital today.' : view === 'Patients' ? 'Manage patient information and contact details.' : view === 'Vitals' ? 'Record and review patient observations.' : view === 'Team' ? 'Manage staff accounts and access roles.' : 'Coordinate care with a clear view of upcoming appointments.'}</p></div></div>
+        {view === 'Overview' ? <Overview /> : view === 'Patients' ? <Patients role={user.role} /> : view === 'Vitals' ? <VitalsPage /> : view === 'Team' ? <TeamPage /> : <Appointments role={user.role} />}
+      </section>
+      <footer>Careflow Hospital Management <span>•</span> Patient information should be accessed only for care delivery.</footer>
+    </main>
+    {showPasswordForm && <ChangePasswordForm onClose={() => setShowPasswordForm(false)} onChanged={logout} />}
+  </div>;
+}
+
+function ChangePasswordForm({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setError('');
+    const form = new FormData(e.currentTarget);
+    const currentPassword = String(form.get('currentPassword'));
+    const newPassword = String(form.get('newPassword'));
+    if (newPassword !== form.get('confirmPassword')) { setError('The new password and confirmation do not match.'); return; }
+    setBusy(true);
+    try { await api('/auth/password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }); onChanged(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not update password.'); }
+    finally { setBusy(false); }
+  }
+  return <div className="modal-backdrop" role="presentation" onClick={onClose}><form className="modal password-modal" onSubmit={submit} onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="eyebrow">ACCOUNT SECURITY</div><h2>Change password</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} /></button></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="form-grid"><Field label="Current password" wide><input name="currentPassword" type="password" autoComplete="current-password" required /></Field><Field label="New password" wide><input name="newPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} required /></Field><Field label="Confirm new password" wide><input name="confirmPassword" type="password" autoComplete="new-password" minLength={12} maxLength={128} required /></Field></div><p className="form-hint">Changing your password signs you out of this session and invalidates older sessions.</p><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Updating…' : 'Update password'}</button></div></form></div>;
+}
+
+function Login({ onLogin }: { onLogin: (user: User) => void }) {
+  const [email, setEmail] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent) { e.preventDefault(); setError(''); setBusy(true); try { const data = await api<{ token: string; user: User }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); setToken(data.token); onLogin(data.user); } catch (err) { setError(err instanceof Error ? err.message : 'Unable to sign in.'); } finally { setBusy(false); } }
+  return <div className="login-page"><div className="login-decoration"><div className="brand login-brand"><div className="brand-mark"><Activity size={21} /></div><span>careflow</span></div><div className="login-message"><div className="eyebrow light">CARE THAT CONNECTS</div><h1>Every detail,<br /><em>in better care.</em></h1><p>A calm, connected workspace for the people who care for your community.</p><div className="login-illustration"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="cross"><span /><i /></div><div className="orbit-dot dot-one" /><div className="orbit-dot dot-two" /><div className="orbit-dot dot-three" /></div></div><div className="decoration-foot">Thoughtfully designed for care teams</div></div><div className="login-panel"><form className="login-form" onSubmit={submit}><div className="eyebrow">STAFF PORTAL</div><h2>Welcome back</h2><p>Sign in to your hospital workspace.</p>{error && <div className="form-error" role="alert">{error}</div>}<label htmlFor="email">Work email</label><input id="email" type="email" autoComplete="username" placeholder="you@hospital.org" value={email} onChange={(e) => setEmail(e.target.value)} required /><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" placeholder="Enter your password" value={password} onChange={(e) => setPassword(e.target.value)} required /><button className="primary-button login-submit" aria-label={busy ? 'Signing in' : 'Sign in'} disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}<span aria-hidden="true">→</span></button><div className="login-security"><ShieldCheck size={16} />Protected staff access</div></form><div className="login-copyright">© 2026 Careflow · Hospital operations</div></div></div>;
+}
+
+function Overview() {
+  const [data, setData] = useState<Dashboard | null>(null); const [error, setError] = useState('');
+  useEffect(() => { api<Dashboard>('/dashboard').then(setData).catch((e) => setError(e.message)); }, []);
+  const stats = data?.stats;
+  return <><div className="stats-grid"><StatCard title="Registered patients" value={stats?.patients} change="Active patient records" color="blue" icon={<Users size={19} />} /><StatCard title="Appointments today" value={stats?.todayAppointments} change="Scheduled for today" color="green" icon={<CalendarDays size={19} />} /><StatCard title="Total appointments" value={stats?.appointments} change="All upcoming visits" color="violet" icon={<ClipboardList size={19} />} /></div><div className="section-heading"><div><h2>Upcoming appointments</h2><p>Your next scheduled patient visits</p></div><button className="text-button" onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'Appointments' }))}>View schedule <span>→</span></button></div><div className="panel table-panel">{error ? <Empty message={error} /> : !data ? <Loading /> : data.upcoming.length === 0 ? <Empty message="No upcoming appointments yet. They’ll appear here once scheduled." /> : <div className="table-wrap"><table><thead><tr><th>PATIENT</th><th>DATE & TIME</th><th>DEPARTMENT</th><th>CLINICIAN</th><th>STATUS</th></tr></thead><tbody>{data.upcoming.map((a) => <tr key={a._id}><td><PatientName patient={a.patient} /></td><td>{formatDate(a.startsAt)}</td><td>{a.department}</td><td>{a.clinician}</td><td><span className="status scheduled">{a.status}</span></td></tr>)}</tbody></table></div>}</div><div className="tip-card"><div className="tip-icon"><ShieldCheck size={20} /></div><div><strong>Patient privacy comes first</strong><p>Only access records you need to provide care. Your actions are associated with your staff account.</p></div></div></>;
+}
+
+function StatCard({ title, value, change, color, icon }: { title: string; value?: number; change: string; color: string; icon: ReactNode }) { return <div className="stat-card"><div className="stat-top"><span>{title}</span><div className={`stat-icon ${color}`}>{icon}</div></div><strong>{value === undefined ? '—' : value.toLocaleString()}</strong><div className="stat-foot"><span className="stat-dot" />{change}</div></div>; }
+function Patients({ role }: { role: User['role'] }) {
+  const [items, setItems] = useState<Patient[]>([]); const [query, setQuery] = useState(''); const [busy, setBusy] = useState(true); const [error, setError] = useState(''); const [showForm, setShowForm] = useState(false);
+  const load = () => { setBusy(true); api<{ items: Patient[] }>(`/patients?q=${encodeURIComponent(query)}`).then((r) => { setItems(r.items); setError(''); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
+  useEffect(() => { const id = setTimeout(load, 250); return () => clearTimeout(id); }, [query]);
+  return <><div className="toolbar"><div className="search-box"><Search size={17} /><input aria-label="Search patients" placeholder="Search name, ID or phone…" value={query} onChange={(e) => setQuery(e.target.value)} /></div><span className="result-count">{items.length} patients</span></div>{showForm && <PatientForm allowClinicalFields={role !== 'receptionist'} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}{error ? <div className="panel"><Empty message={error} /></div> : busy ? <div className="panel"><Loading /></div> : items.length === 0 ? <div className="panel"><Empty message="No patient records found." action={<button className="primary-button" onClick={() => setShowForm(true)}><Plus size={16} />Add first patient</button>} /></div> : <div className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>PATIENT</th><th>PATIENT ID</th><th>DATE OF BIRTH</th><th>CONTACT</th>{role !== 'receptionist' && <th>BLOOD TYPE</th>}</tr></thead><tbody>{items.map((p) => <tr key={p._id}><td><PatientName patient={p} /></td><td><span className="id-label">{p.patientNumber}</span></td><td>{new Date(p.dateOfBirth).toLocaleDateString()}</td><td>{p.phone || p.email || '—'}</td>{role !== 'receptionist' && <td>{p.bloodType || '—'}</td>}</tr>)}</tbody></table></div></div>}{items.length > 0 && <button className="primary-button floating-add" onClick={() => setShowForm(true)}><Plus size={17} />Add patient</button>}</>;
+}
+function PatientForm({ allowClinicalFields, onClose, onSaved }: { allowClinicalFields: boolean; onClose: () => void; onSaved: () => void }) {
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) { e.preventDefault(); setBusy(true); setError(''); const form = new FormData(e.currentTarget); const body = Object.fromEntries(form.entries()); try { await api('/patients', { method: 'POST', body: JSON.stringify(body) }); onSaved(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not save patient.'); } finally { setBusy(false); } }
+  return <div className="modal-backdrop" role="presentation" onClick={onClose}><form className="modal" onSubmit={submit} onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="eyebrow">PATIENT RECORD</div><h2>Add a patient</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} /></button></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="form-grid"><Field label="Patient ID"><input name="patientNumber" required maxLength={30} placeholder="e.g. CF-2026-001" /></Field><Field label="Date of birth"><input name="dateOfBirth" type="date" required max={new Date().toISOString().slice(0, 10)} /></Field><Field label="First name"><input name="firstName" required maxLength={80} /></Field><Field label="Last name"><input name="lastName" required maxLength={80} /></Field><Field label="Sex"><select name="sex" required defaultValue=""><option value="" disabled>Select</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="undisclosed">Undisclosed</option></select></Field><Field label="Phone"><input name="phone" maxLength={30} /></Field><Field label="Email"><input name="email" type="email" maxLength={254} /></Field>{allowClinicalFields && <><Field label="Blood type"><select name="bloodType" defaultValue=""><option value="">Not recorded</option>{['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map((v) => <option key={v}>{v}</option>)}</select></Field><Field label="Allergies" wide><textarea name="allergies" rows={2} maxLength={1000} placeholder="Record known allergies, or leave blank" /></Field></>}</div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Save patient'}</button></div></form></div>;
+}
+export function VitalsPage() {
+  const [patients, setPatients] = useState<Patient[]>([]); const [patientId, setPatientId] = useState(''); const [items, setItems] = useState<Vital[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(''); const [showForm, setShowForm] = useState(false);
+  useEffect(() => { api<{ items: Patient[] }>('/patients?limit=100').then((r) => setPatients(r.items)).catch((e) => setError(e.message)); }, []);
+  const loadVitals = () => { if (!patientId) { setItems([]); return; } setBusy(true); api<{ items: Vital[] }>(`/patients/${patientId}/vitals`).then((r) => { setItems(r.items); setError(''); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
+  useEffect(() => { loadVitals(); }, [patientId]);
+  return <>
+    <div className="toolbar">
+      <div className="patient-picker"><label htmlFor="vitals-patient">Patient</label><select id="vitals-patient" value={patientId} onChange={(e) => setPatientId(e.target.value)}><option value="">Choose a patient to view vitals</option>{patients.map((p) => <option key={p._id} value={p._id}>{p.lastName}, {p.firstName} · {p.patientNumber}</option>)}</select></div>
+      <button className="primary-button" disabled={!patientId} onClick={() => setShowForm(true)}><Plus size={17} />Record vitals</button>
+    </div>
+    {error && <div className="form-error page-error" role="alert">{error}</div>}
+    {showForm && patientId && <VitalForm patientId={patientId} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); loadVitals(); }} />}
+    {!patientId ? <div className="panel"><Empty message="Choose a patient to view their observations and add a new vital-sign record." /></div> : busy ? <div className="panel"><Loading /></div> : items.length === 0 ? <div className="panel"><Empty message="No vital signs recorded for this patient yet." action={<button className="primary-button" onClick={() => setShowForm(true)}><Plus size={16} />Record first vitals</button>} /></div> : <div className="panel table-panel"><div className="table-wrap"><table>
+      <thead><tr><th>RECORDED</th><th>BLOOD PRESSURE</th><th>PULSE</th><th>TEMPERATURE</th><th>RESP. RATE</th><th>O₂ SAT</th><th>WEIGHT</th><th>HEIGHT</th><th>PAIN / NOTES</th><th>RECORDED BY</th></tr></thead>
+      <tbody>{items.map((v) => <tr key={v._id}><td>{formatDate(v.recordedAt)}</td><td>{v.systolic}/{v.diastolic} mmHg</td><td>{v.pulse} bpm</td><td>{v.temperatureC.toFixed(1)} °C</td><td>{v.respiratoryRate}/min</td><td>{v.oxygenSaturation}%</td><td>{v.weightKg ? `${v.weightKg} kg` : '—'}</td><td>{v.heightCm ? `${v.heightCm} cm` : '—'}</td><td><span>{v.painScore !== undefined ? v.painScore : '—'}</span>{v.notes && <small className="vital-note">{v.notes}</small>}</td><td>{v.recordedBy?.name || 'Staff'}</td></tr>)}</tbody>
+    </table></div></div>}
+  </>;
+}
+function VitalForm({ patientId, onClose, onSaved }: { patientId: string; onClose: () => void; onSaved: () => void }) {
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault(); setBusy(true); setError('');
+    const values = Object.fromEntries(new FormData(e.currentTarget).entries());
+    const body: Record<string, string | number> = {};
+    for (const [key, value] of Object.entries(values)) if (value !== '') body[key] = ['notes'].includes(key) ? String(value) : Number(value);
+    try { await api(`/patients/${patientId}/vitals`, { method: 'POST', body: JSON.stringify(body) }); onSaved(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not save vital signs.'); }
+    finally { setBusy(false); }
+  }
+  return <div className="modal-backdrop" role="presentation" onClick={onClose}><form className="modal" onSubmit={submit} onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="eyebrow">PATIENT OBSERVATIONS</div><h2>Record vital signs</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} /></button></div>{error && <div className="form-error" role="alert">{error}</div>}<p className="form-hint">Enter the measured values. Optional fields can be left blank. Temperature is in °C; weight in kg; height in cm.</p><div className="form-grid"><Field label="Systolic BP · mmHg"><input name="systolic" type="number" min="40" max="300" step="1" required /></Field><Field label="Diastolic BP · mmHg"><input name="diastolic" type="number" min="20" max="200" step="1" required /></Field><Field label="Pulse · bpm"><input name="pulse" type="number" min="20" max="250" step="1" required /></Field><Field label="Temperature · °C"><input name="temperatureC" type="number" min="25" max="45" step="0.1" required /></Field><Field label="Respiratory rate · /min"><input name="respiratoryRate" type="number" min="1" max="80" step="1" required /></Field><Field label="Oxygen saturation · %"><input name="oxygenSaturation" type="number" min="50" max="100" step="1" required /></Field><Field label="Weight · kg"><input name="weightKg" type="number" min="0.2" max="500" step="0.1" /></Field><Field label="Height · cm"><input name="heightCm" type="number" min="20" max="260" step="0.1" /></Field><Field label="Pain score · 0–10"><input name="painScore" type="number" min="0" max="10" step="1" /></Field><Field label="Notes" wide><textarea name="notes" rows={2} maxLength={500} placeholder="Optional clinical observation" /></Field></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Saving…' : 'Save vitals'}</button></div></form></div>;
+}
+function TeamPage() {
+  const [items, setItems] = useState<Staff[]>([]); const [busy, setBusy] = useState(true); const [error, setError] = useState(''); const [showForm, setShowForm] = useState(false);
+  const load = () => { setBusy(true); api<{ items: Staff[] }>('/users').then((r) => { setItems(r.items); setError(''); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
+  useEffect(() => { load(); }, []);
+  return <>{showForm && <StaffForm onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}{error && <div className="form-error page-error" role="alert">{error}</div>}<div className="toolbar"><span className="result-count">{items.length} staff accounts</span><button className="primary-button" onClick={() => setShowForm(true)}><Plus size={17} />Add staff member</button></div>{busy ? <div className="panel"><Loading /></div> : <div className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>NAME</th><th>EMAIL</th><th>ROLE</th><th>ADDED</th></tr></thead><tbody>{items.map((person) => <tr key={person.id || person._id}><td><div className="patient-name"><div className="patient-avatar">{person.name.slice(0, 1).toUpperCase()}</div><strong>{person.name}</strong></div></td><td>{person.email}</td><td><span className="role-pill">{person.role}</span></td><td>{person.createdAt ? new Date(person.createdAt).toLocaleDateString() : '—'}</td></tr>)}</tbody></table></div></div>}</>;
+}
+function StaffForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) { e.preventDefault(); setBusy(true); setError(''); const form = new FormData(e.currentTarget); const body = Object.fromEntries(form.entries()); try { await api('/users', { method: 'POST', body: JSON.stringify(body) }); onSaved(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not create staff account.'); } finally { setBusy(false); } }
+  return <div className="modal-backdrop" role="presentation" onClick={onClose}><form className="modal" onSubmit={submit} onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="eyebrow">STAFF ACCESS</div><h2>Add a team member</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} /></button></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="form-grid"><Field label="Full name" wide><input name="name" required minLength={2} maxLength={100} autoComplete="name" /></Field><Field label="Work email" wide><input name="email" type="email" required maxLength={254} autoComplete="email" /></Field><Field label="Temporary password" wide><input name="password" type="password" required minLength={12} maxLength={128} autoComplete="new-password" /><small>At least 12 characters. Share it securely and have the staff member replace it after sign-in.</small></Field><Field label="Role" wide><select name="role" defaultValue="receptionist"><option value="doctor">Doctor</option><option value="nurse">Nurse</option><option value="receptionist">Receptionist</option><option value="admin">Administrator</option></select></Field></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy}>{busy ? 'Creating…' : 'Create account'}</button></div></form></div>;
+}
+function Appointments({ role }: { role: User['role'] }) {
+  const [items, setItems] = useState<Appointment[]>([]); const [patients, setPatients] = useState<Patient[]>([]); const [busy, setBusy] = useState(true); const [error, setError] = useState(''); const [showForm, setShowForm] = useState(false);
+  const load = () => { setBusy(true); api<{ items: Appointment[] }>('/appointments').then((r) => { setItems(r.items); setError(''); }).catch((e) => setError(e.message)).finally(() => setBusy(false)); };
+  useEffect(() => { load(); api<{ items: Patient[] }>('/patients?limit=100').then((r) => setPatients(r.items)).catch(() => {}); }, []);
+  async function updateStatus(id: string, status: string) { try { await api(`/appointments/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }); load(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not update appointment.'); } }
+  return <>{showForm && <AppointmentForm patients={patients} onClose={() => setShowForm(false)} onSaved={() => { setShowForm(false); load(); }} />}{error ? <div className="panel"><Empty message={error} /></div> : busy ? <div className="panel"><Loading /></div> : items.length === 0 ? <div className="panel"><Empty message="No appointments scheduled yet." action={<button className="primary-button" onClick={() => setShowForm(true)}><Plus size={16} />Schedule appointment</button>} /></div> : <div className="panel table-panel"><div className="table-wrap"><table><thead><tr><th>PATIENT</th><th>DATE & TIME</th><th>DEPARTMENT</th><th>CLINICIAN</th><th>STATUS</th></tr></thead><tbody>{items.map((a) => <tr key={a._id}><td><PatientName patient={a.patient} /></td><td>{formatDate(a.startsAt)}</td><td>{a.department}</td><td>{a.clinician}</td><td>{role === 'admin' || role === 'doctor' || role === 'nurse' ? <select aria-label={`Update status for ${a.patient.firstName} ${a.patient.lastName}`} className="status-select" value={a.status} onChange={(e) => updateStatus(a._id, e.target.value)}>{['scheduled', 'checked-in', 'completed', 'cancelled'].map((status) => <option key={status} value={status}>{status}</option>)}</select> : <span className={`status ${a.status}`}>{a.status}</span>}</td></tr>)}</tbody></table></div></div>}{items.length > 0 && <button className="primary-button floating-add" onClick={() => setShowForm(true)}><Plus size={17} />New appointment</button>}</>;
+}
+function AppointmentForm({ patients, onClose, onSaved }: { patients: Patient[]; onClose: () => void; onSaved: () => void }) {
+  const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
+  async function submit(e: FormEvent<HTMLFormElement>) { e.preventDefault(); setBusy(true); setError(''); const form = new FormData(e.currentTarget); const raw = Object.fromEntries(form.entries()); const body = { ...raw, startsAt: new Date(String(raw.startsAt)).toISOString() }; try { await api('/appointments', { method: 'POST', body: JSON.stringify(body) }); onSaved(); } catch (e) { setError(e instanceof Error ? e.message : 'Could not schedule appointment.'); } finally { setBusy(false); } }
+  return <div className="modal-backdrop" role="presentation" onClick={onClose}><form className="modal" onSubmit={submit} onClick={(e) => e.stopPropagation()}><div className="modal-heading"><div><div className="eyebrow">CARE COORDINATION</div><h2>New appointment</h2></div><button type="button" className="icon-button" aria-label="Close" onClick={onClose}><X size={19} /></button></div>{error && <div className="form-error" role="alert">{error}</div>}<div className="form-grid"><Field label="Patient" wide><select name="patient" required defaultValue=""><option value="" disabled>Select a patient</option>{patients.map((p) => <option key={p._id} value={p._id}>{p.lastName}, {p.firstName} · {p.patientNumber}</option>)}</select>{patients.length === 0 && <small>Add a patient before scheduling.</small>}</Field><Field label="Date and time"><input type="datetime-local" name="startsAt" required min={new Date().toISOString().slice(0, 16)} /></Field><Field label="Department"><input name="department" required maxLength={80} placeholder="e.g. General medicine" /></Field><Field label="Clinician"><input name="clinician" required maxLength={100} placeholder="Clinician name" /></Field><Field label="Reason for visit" wide><textarea name="reason" rows={2} maxLength={500} /></Field></div><div className="modal-actions"><button className="secondary-button" type="button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={busy || patients.length === 0}>{busy ? 'Scheduling…' : 'Schedule visit'}</button></div></form></div>;
+}
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: ReactNode }) { return <label className={`field ${wide ? 'wide' : ''}`}><span>{label}</span>{children}</label>; }
+function PatientName({ patient }: { patient: Patient }) { const initials = `${patient.firstName?.[0] || ''}${patient.lastName?.[0] || ''}`; return <div className="patient-name"><div className="patient-avatar">{initials}</div><div><strong>{patient.firstName} {patient.lastName}</strong><span>{patient.patientNumber}</span></div></div>; }
+function Empty({ message, action }: { message: string; action?: ReactNode }) { return <div className="empty-state"><div className="empty-icon"><ClipboardList size={21} /></div><p>{message}</p>{action}</div>; }
+function Loading() { return <div className="loading-row"><span className="spinner" />Loading records…</div>; }
+function formatDate(value: string) { return new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+
+export default App;
