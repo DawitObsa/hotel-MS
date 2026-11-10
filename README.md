@@ -22,6 +22,17 @@ curl -X POST http://localhost:4000/api/auth/bootstrap \
 
 5. Open http://localhost:5173 and sign in. Bootstrap is one-time and protected by an atomic database lock. Administrators can create staff accounts in the Team page.
 
+To create the first administrator, run `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\bootstrap-admin.ps1` in the VS Code terminal. Follow the prompts; the password is hidden while typing. The setup key is read from the private `backend/.env`.
+
+## Run with Docker
+
+1. Run `npm run setup:env` if `backend/.env` does not already exist. Keep this file private; Compose uses it for the API secrets.
+2. From the project root, run `npm run docker:up`. Compose builds and starts MongoDB, the API, and the frontend.
+3. Open http://localhost:5173 and create the initial administrator using the bootstrap request above. MongoDB data is kept in the `careflow-mongodb` volume when the stack is stopped.
+4. Run `npm run docker:down` to stop and remove the app containers and network. This keeps the database volume; `docker compose down -v` removes the stored database too.
+
+The API and database ports are bound to loopback. The API container connects to MongoDB using the Compose service name, while the browser reaches the API at `http://localhost:4000/api`.
+
 The frontend uses `VITE_API_URL` if set, otherwise `http://localhost:4000/api`. The API uses `FRONTEND_ORIGIN` for CORS. Configure one trusted origin in production.
 
 ## Commands
@@ -34,6 +45,7 @@ Run at the project root:
 | `npm run setup:env` | Create local backend settings and random development secrets once |
 | `npm run dev:stack` | Start the local MongoDB container, API, and frontend |
 | `npm run db:up` / `npm run db:down` | Start or stop local MongoDB; stopping keeps its data volume |
+| `npm run docker:up` / `npm run docker:down` | Build and run, or stop, the full Docker Compose stack |
 | `npm run build` | Syntax-check backend JavaScript and create the frontend production bundle |
 | `npm test` | Run backend unit/API tests and frontend UI tests |
 | `npm run lint` | Run backend and frontend ESLint checks |

@@ -9,6 +9,8 @@
     "db:up": "docker compose up -d mongodb",
     "db:down": "docker compose stop mongodb",
     "dev:stack": "npm run db:up && npm run dev",
+    "docker:up": "docker compose up --build -d",
+    "docker:down": "docker compose down",
     "build": "npm run build -w backend && npm run build -w frontend",
     "test": "npm run test -w backend && npm run test -w frontend",
     "lint": "npm run lint -w backend && npm run lint -w frontend"
