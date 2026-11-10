@@ -11,6 +11,9 @@ const patientSchema = new mongoose.Schema({
   address: { type: String, trim: true, maxlength: 300, default: '' },
   bloodType: { type: String, enum: ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'], default: '' },
   allergies: { type: String, trim: true, maxlength: 1000, default: '' },
+  emergencyContactName: { type: String, trim: true, maxlength: 100, default: '' },
+  emergencyContactPhone: { type: String, trim: true, maxlength: 30, default: '' },
+  medicalHistory: { type: String, trim: true, maxlength: 4000, default: '' },
 }, { timestamps: true });
 
 patientSchema.index({ lastName: 1, firstName: 1 });

@@ -7,6 +7,7 @@ const userSchema = new mongoose.Schema({
   passwordChangedAt: { type: Date },
   sessionVersion: { type: Number, default: 0, min: 0 },
   role: { type: String, enum: ['admin', 'doctor', 'nurse', 'receptionist'], default: 'receptionist', required: true },
+  active: { type: Boolean, default: true, index: true },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

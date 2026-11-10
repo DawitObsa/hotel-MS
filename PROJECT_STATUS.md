@@ -8,9 +8,10 @@ Updated: 2026-11-09
 
 ## Implemented
 
-- Responsive React/TypeScript staff portal with overview, patient registration/search, appointments, vital capture/history, and administrator Team page.
+- Responsive React/TypeScript staff portal with overview, patient registration/search, appointments, vital capture/history, prescriptions, lab results, invoices/payments, admissions, and administrator Team page.
 - Express/Mongoose API with patient, appointment, vital, staff, and one-time bootstrap-lock models.
-- Password hashing, JWT authentication/expiry, password changes with old-session invalidation, role authorization, request validation, auth rate limiting, Helmet, and central error handling.
+- Password hashing, JWT authentication/expiry, password changes with old-session invalidation, role authorization, account deactivation, request validation, auth rate limiting, Helmet, and central error handling.
+- Audit records for patient, vital, medication, laboratory, invoice, and admission changes; patient emergency-contact and medical-history fields.
 - Vital ranges and blood pressure relationship validation; vital record attribution and timestamps.
 - Receptionist patient registration hides blood type and allergies; their patient-list responses omit those fields.
 - `README.md`, environment templates, npm scripts, and generated lockfile.
@@ -51,7 +52,7 @@ Updated: 2026-11-09
 1. Configure a dedicated development MongoDB; verify `/api/health`, indexes, CRUD, duplicates, relationships, and error paths with an isolated test database.
 2. Add database-backed API tests for role denial, duplicates, vital range validation, and data visibility by role.
 3. Resolve the moderate dev-tool audit findings through a supported TypeScript parser dependency update; avoid the audit tool's breaking downgrade suggestion.
-4. Add patient editing UI, account deactivation, password reset, MFA, and audit history.
+4. Add patient editing UI, password reset, MFA, notification delivery, document attachments, and calendar availability views.
 5. Review patient-data handling, backups, encryption, access policy, and regulatory requirements with the hospital before deployment.
 
 ## Security limitations

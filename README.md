@@ -2,6 +2,8 @@
 
 Careflow is a full-stack hospital operations MVP. It includes staff authentication and administration, patient registration/search, appointment scheduling/status updates, a dashboard, and a vital-sign form with patient history.
 
+It also includes prescriptions, lab-result entry, invoices and payment recording, ward/bed admissions, emergency contacts and medical-history fields, account deactivation, and audit records for clinical changes.
+
 ## Requirements
 
 - Node.js 20 or newer and npm 10 or newer
@@ -73,4 +75,4 @@ Protected routes accept `Authorization: Bearer <token>`. Requests are size-limit
 
 ## Security and production readiness
 
-This MVP is not a certified electronic health record and is **not ready for real patient data**. The bearer token is held in browser session storage. Before any production deployment, add and review audit history, MFA, password reset, fine-grained facility access, encrypted backups/at-rest configuration, and applicable privacy controls. Have the hospital security and privacy owners review the deployment. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for verification and open work.
+This MVP is not a certified electronic health record and is **not ready for real patient data**. The bearer token is held in browser session storage. Before any production deployment, add and review MFA, password reset, fine-grained facility access, encrypted backups/at-rest configuration, and applicable privacy controls. Have the hospital security and privacy owners review the deployment. For a free demo deployment, see [DEPLOYMENT.md](DEPLOYMENT.md). See [PROJECT_STATUS.md](PROJECT_STATUS.md) for verification and open work.

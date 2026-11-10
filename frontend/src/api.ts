@@ -18,7 +18,12 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 }
 
 export type User = { id: string; name: string; email: string; role: 'admin' | 'doctor' | 'nurse' | 'receptionist' };
-export type Patient = { _id: string; patientNumber: string; firstName: string; lastName: string; dateOfBirth: string; sex: string; phone: string; email: string; bloodType: string; allergies: string };
+export type Patient = { _id: string; patientNumber: string; firstName: string; lastName: string; dateOfBirth: string; sex: string; phone: string; email: string; bloodType: string; allergies: string; emergencyContactName?: string; emergencyContactPhone?: string; medicalHistory?: string };
 export type Appointment = { _id: string; patient: Patient; clinician: string; department: string; startsAt: string; reason: string; status: string };
 export type Vital = { _id: string; patient: string; recordedAt: string; systolic: number; diastolic: number; pulse: number; temperatureC: number; respiratoryRate: number; oxygenSaturation: number; weightKg?: number; heightCm?: number; painScore?: number; notes: string; recordedBy: { name: string; role: string } };
 export type Staff = { id?: string; _id?: string; name: string; email: string; role: User['role']; createdAt?: string };
+export type RecordPatient = Pick<Patient, '_id' | 'firstName' | 'lastName' | 'patientNumber'>;
+export type Prescription = { _id: string; patient: RecordPatient; medication: string; dosage: string; frequency: string; instructions: string; status: string; createdAt: string };
+export type LabResult = { _id: string; patient: RecordPatient; testName: string; result: string; status: string; collectedAt: string };
+export type Invoice = { _id: string; patient: RecordPatient; description: string; amount: number; paidAmount: number; status: string; insuranceProvider: string; createdAt: string };
+export type Admission = { _id: string; patient: RecordPatient; ward: string; bed: string; reason: string; admittedAt: string; status: string };

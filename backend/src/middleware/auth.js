@@ -6,8 +6,8 @@ export async function authenticate(req, res, next) {
     const token = req.get('authorization')?.match(/^Bearer (.+)$/i)?.[1];
     if (!token) return res.status(401).json({ error: 'Authentication required.' });
     const claims = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(claims.sub).select('name email role sessionVersion');
-    if (!user) return res.status(401).json({ error: 'Session is no longer valid.' });
+    const user = await User.findById(claims.sub).select('name email role sessionVersion active');
+    if (!user || !user.active) return res.status(401).json({ error: 'Session is no longer valid.' });
     if (claims.sessionVersion !== user.sessionVersion) return res.status(401).json({ error: 'Session is no longer valid.' });
     req.user = user;
     next();
